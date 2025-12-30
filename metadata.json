@@ -1,0 +1,7 @@
+{
+  "name": "Seosan Weather & Biorhythm",
+  "description": "A premium weather dashboard specifically for Seosan, KR, featuring personalized biorhythm insights and high-fidelity UI design.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
