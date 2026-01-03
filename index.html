@@ -1,49 +1,186 @@
 
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="ko" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Seosan Weather & Biorhythm</title>
+  <title>서산 날씨 & 바이오리듬</title>
+  
+  <!-- 1. 스타일 및 폰트 -->
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" />
+  
+  <!-- 2. 브라우저용 통역사 (Babel) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- 3. 라이브러리 매핑 -->
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom": "https://esm.sh/react-dom@18.2.0/client",
+    "@google/genai": "https://esm.sh/@google/genai@1.34.0",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+  }
+}
+</script>
+
   <script>
     tailwind.config = {
       darkMode: 'class',
       theme: {
         extend: {
-          fontFamily: {
-            sans: ['Manrope', 'sans-serif'],
-          },
-          colors: {
-            primary: '#13a4ec',
-            background: '#101c22',
-            surface: '#1c2a33',
-          }
+          fontFamily: { sans: ['Manrope', 'sans-serif'] },
+          colors: { primary: '#13a4ec', background: '#101c22', surface: '#1c2a33' }
         }
       }
     }
   </script>
+
   <style>
     .no-scrollbar::-webkit-scrollbar { display: none; }
-    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    body { background-color: #101c22; color: white; }
+    body { background-color: #101c22; color: white; margin: 0; }
+    .animate-float { animation: float 3s ease-in-out infinite; }
+    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
   </style>
-<script type="importmap">
-{
-  "imports": {
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.34.0"
-  }
-}
-</script>
 </head>
 <body>
   <div id="root"></div>
+
+  <!-- 4. 메인 앱 로직 (Babel이 이 코드를 실시간 변환합니다) -->
+  <script type="text/babel" data-type="module">
+    import React, { useState, useEffect, useMemo } from 'react';
+    import ReactDOM from 'react-dom';
+    import { GoogleGenAI, Type } from "@google/genai";
+
+    // [중요] 메모장에서 실행할 때는 아래 빈칸에 본인의 API 키를 직접 넣어야 실시간 날씨가 나옵니다.
+    const YOUR_API_KEY = ""; 
+
+    const ICON_MAP = { '맑음': 'wb_sunny', '흐림': 'cloud', '구름': 'partly_cloudy_day', '비': 'rainy', '눈': 'ac_unit' };
+    const getIcon = (cond) => Object.keys(ICON_MAP).find(k => cond?.includes(k)) ? ICON_MAP[Object.keys(ICON_MAP).find(k => cond.includes(k))] : 'wb_cloudy';
+
+    const App = () => {
+      const [weather, setWeather] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [birthDate, setBirthDate] = useState('1995-01-01');
+      const [insight, setInsight] = useState("에너지를 분석하고 있습니다...");
+      const [apiKeyError, setApiKeyError] = useState(false);
+
+      const bio = useMemo(() => {
+        const b = new Date(birthDate);
+        if (isNaN(b.getTime())) return null;
+        const now = new Date().setHours(0,0,0,0);
+        const trend = [];
+        const days = ["일", "월", "화", "수", "목", "금", "토"];
+        for(let j=0; j<7; j++) {
+          const t = now + (j * 86400000);
+          const d = Math.floor((t - b.getTime()) / 86400000);
+          trend.push({ 
+            day: j===0 ? "오늘" : days[new Date(t).getDay()],
+            p: Math.round((Math.sin(2 * Math.PI * d / 23) + 1) * 50),
+            e: Math.round((Math.sin(2 * Math.PI * d / 28) + 1) * 50),
+            i: Math.round((Math.sin(2 * Math.PI * d / 33) + 1) * 50)
+          });
+        }
+        return { ...trend[0], trend, overall: Math.round((trend[0].p + trend[0].e + trend[0].i)/3) };
+      }, [birthDate]);
+
+      useEffect(() => {
+        const key = YOUR_API_KEY || (typeof process !== 'undefined' ? process.env.API_KEY : '');
+        if (!key || key === "YOUR_API_KEY_HERE") {
+          setApiKeyError(true);
+          setLoading(false);
+          return;
+        }
+
+        const load = async () => {
+          setLoading(true);
+          try {
+            const ai = new GoogleGenAI({ apiKey: key });
+            const res = await ai.models.generateContent({
+              model: "gemini-3-flash-preview",
+              contents: "서산시 현재 날씨와 주간 예보를 한국어 JSON으로 알려줘.",
+              config: { tools: [{ googleSearch: {} }], responseMimeType: "application/json" }
+            });
+            const data = JSON.parse(res.text);
+            setWeather(data);
+
+            const insightRes = await ai.models.generateContent({
+              model: "gemini-3-flash-preview",
+              contents: `오늘 바이오리듬이 ${bio.overall}%이고 날씨가 ${data.condition}일 때, 서산 시민에게 해줄 따뜻한 한마디.`
+            });
+            setInsight(insightRes.text);
+          } catch (e) {
+            console.error(e);
+            setWeather({ temp: 15, condition: '맑음', high: 20, low: 10, humidity: 40, windSpeed: 2, airQuality: '좋음', weekly: [] });
+          }
+          setLoading(false);
+        };
+        load();
+      }, [birthDate, bio.overall]);
+
+      if (loading) return <div className="h-screen flex items-center justify-center bg-background">로딩 중...</div>;
+
+      if (apiKeyError) return (
+        <div className="h-screen flex items-center justify-center bg-background p-10 text-center">
+          <div className="space-y-4">
+            <span className="material-symbols-outlined text-6xl text-rose-500">key_off</span>
+            <h2 className="text-xl font-bold">API 키가 필요합니다</h2>
+            <p className="text-slate-400 text-sm">메모장으로 실행하시려면 코드 상단의 <br/><code>YOUR_API_KEY</code> 변수에 키를 넣어주세요.</p>
+            <a href="https://aistudio.google.com/" target="_blank" className="inline-block px-6 py-2 bg-primary rounded-full font-bold">무료 키 발급받기</a>
+          </div>
+        </div>
+      );
+
+      return (
+        <div className="flex justify-center min-h-screen bg-slate-950 font-sans text-white">
+          <div className="w-full max-w-md bg-background p-6 space-y-8 overflow-y-auto no-scrollbar pb-20">
+            <header className="text-center pt-4">
+              <h1 className="text-2xl font-black">충청남도 서산시</h1>
+              <p className="text-[10px] text-slate-500 font-bold tracking-widest uppercase">South Korea</p>
+            </header>
+
+            <section className="rounded-[2.5rem] bg-gradient-to-br from-primary to-blue-800 p-8 shadow-2xl relative overflow-hidden group">
+              <div className="flex justify-between items-start relative z-10">
+                <div>
+                  <div className="flex items-baseline"><span className="text-7xl font-black">{Math.round(weather.temp)}</span><span className="text-3xl font-bold">°</span></div>
+                  <p className="text-xl font-bold mt-1 opacity-90">{weather.condition}</p>
+                </div>
+                <span className="material-symbols-outlined text-[90px] animate-float" style={{fontVariationSettings:"'FILL' 1"}}>{getIcon(weather.condition)}</span>
+              </div>
+            </section>
+
+            <section className="bg-surface rounded-[2.5rem] p-7 border border-white/5 space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="font-black">바이오리듬 ({bio.overall}%)</h2>
+                <div className="flex gap-2 text-[9px] font-bold">
+                  <span className="text-rose-400">● 신체</span> <span className="text-cyan-400">● 감성</span> <span className="text-amber-400">● 지성</span>
+                </div>
+              </div>
+              <div className="h-32 w-full relative">
+                <svg className="w-full h-full" viewBox="0 0 300 100" preserveAspectRatio="none">
+                  <polyline fill="none" stroke="#fb7185" strokeWidth="3" points={bio.trend.map((t,i)=>`${i*50},${100-t.p}`).join(' ')} />
+                  <polyline fill="none" stroke="#22d3ee" strokeWidth="3" points={bio.trend.map((t,i)=>`${i*50},${100-t.e}`).join(' ')} />
+                  <polyline fill="none" stroke="#fbbf24" strokeWidth="3" points={bio.trend.map((t,i)=>`${i*50},${100-t.i}`).join(' ')} />
+                </svg>
+              </div>
+              <div className="bg-slate-900/50 p-4 rounded-2xl border border-white/10 italic text-sm text-blue-100">"{insight}"</div>
+              <div className="pt-4">
+                <label className="text-[10px] font-black text-slate-500 block mb-2 tracking-widest uppercase">생일 변경</label>
+                <input type="date" value={birthDate} onChange={e=>setBirthDate(e.target.value)} className="w-full bg-slate-900 border border-white/5 rounded-xl px-4 py-3 text-sm font-bold text-white focus:ring-1 focus:ring-primary outline-none" />
+              </div>
+            </section>
+          </div>
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
 </body>
 </html>
